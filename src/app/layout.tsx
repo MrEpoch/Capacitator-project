@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import NativeContextProvider from "@/contexts/NativeContext";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -28,7 +29,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <NativeContextProvider>
+          <main className="w-full bg-main-background-100 min-h-screen relative">
+            {children}
+          </main>
+        </NativeContextProvider>
       </body>
     </html>
   );
