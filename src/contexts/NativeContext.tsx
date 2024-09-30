@@ -39,18 +39,25 @@ export default function NativeContextProvider({
   const GPSenabledRef = useRef<boolean>(false);
 
   async function validateGPS() {
-    await checkIfGPSEnabled();
-    if (GPSenabledRef.current) {
-      codeStack.current = await startWatchingPosition();
-    } else {
+    const status = await checkIfGPSEnabled();
+    if (status === false) {
       codeStack.current = null;
       await GPSwarning();
+      GPSenabledRef.current = status;
+    } else if (status === true && status !== GPSenabledRef.current) {
+      codeStack.current = null;
+      if (watchRef.current) {
+        Geolocation.clearWatch({ id: watchRef.current });
+        watchRef.current = null;
+      }
+      codeStack.current = await startWatchingPosition();
+      GPSenabledRef.current = status;
     }
   }
 
   useEffect(() => {
     const interval = setInterval(validateGPS, 5000);
-    
+
     return () => {
       if (typeof watchRef.current === "string") {
         Geolocation.clearWatch({ id: watchRef.current ?? "" });
@@ -100,14 +107,13 @@ export default function NativeContextProvider({
     console.log("Position = ", position, "Error = ", err);
   }
 
-  
   async function checkIfGPSEnabled() {
     try {
       await Geolocation.checkPermissions();
-      GPSenabledRef.current = true;
+      return true;
     } catch {
       console.error("No GPS available");
-      GPSenabledRef.current = false;
+      return false;
     }
   }
 
@@ -120,7 +126,9 @@ export default function NativeContextProvider({
   }
 
   return (
-    <NativeContext.Provider value={{ GPSenabled: GPSenabledRef.current, loadedTimes, coordinates }}>
+    <NativeContext.Provider
+      value={{ GPSenabled: GPSenabledRef.current, loadedTimes, coordinates }}
+    >
       <p>watch runned: {watchRunned}</p>
       <p>current watch: {watchRef.current}</p>
       {children}

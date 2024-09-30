@@ -1,7 +1,9 @@
-'use client';
+"use client";
 import dynamic from "next/dynamic";
 
-const GeoMap = dynamic(() => import("@/components/shared/geolocation"), { ssr: false });
+const GeoMap = dynamic(() => import("@/components/shared/geolocation"), {
+  ssr: false,
+});
 
 export default async function Home() {
   return (
