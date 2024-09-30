@@ -4,10 +4,17 @@ import { Dialog } from "@capacitor/dialog";
 import { Geolocation, Position } from "@capacitor/geolocation";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 
+export type nativeContextType = {
+  GPSenabled: boolean;
+  loadedTimes: number;
+  coordinates: Position | null;
+};
+
 const NativeContext = createContext({
   GPSenabled: false,
   loadedTimes: 0,
-});
+  coordinates: null,
+} as nativeContextType);
 
 export const useNative = () => {
   const context = useContext(NativeContext);
@@ -22,36 +29,38 @@ export default function NativeContextProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [GPSenabled, setGPSenabled] = useState<boolean>(false);
   const [loadedTimes, setLoadedTimes] = useState<number>(0);
-  const [readedTimes, setReadedTimes] = useState<number>(0);
   const [watchRunned, setWatchRunned] = useState<number>(0);
+  const [coordinates, setCoordinates] = useState<Position | null>(null);
   // no any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const codeStack = useRef<null | any>(null);
   const watchRef = useRef<string | null>(null);
-  const restartPromiseRef = useRef<Promise<void> | null>(null);
+  const GPSenabledRef = useRef<boolean>(false);
+
+  async function validateGPS() {
+    await checkIfGPSEnabled();
+    if (GPSenabledRef.current) {
+      codeStack.current = await startWatchingPosition();
+    } else {
+      codeStack.current = null;
+      await GPSwarning();
+    }
+  }
 
   useEffect(() => {
-    if (codeStack.current === null) {
-      codeStack.current = initialGPSHandler();
-    }
+    const interval = setInterval(validateGPS, 5000);
+    
     return () => {
       if (typeof watchRef.current === "string") {
         Geolocation.clearWatch({ id: watchRef.current ?? "" });
         watchRef.current = null;
       }
       codeStack.current = null;
+
+      clearInterval(interval);
     };
   }, []);
-
-  function initialGPSHandler(): void {
-    (async () => {
-      // It should be listening for changes
-      await startWatchingPosition();
-    })();
-  }
-
 
   async function startWatchingPosition() {
     try {
@@ -69,47 +78,37 @@ export default function NativeContextProvider({
       } else {
         await Geolocation.clearWatch({ id: watchRef.current });
         watchRef.current = null;
-        await startWatchingPosition();
       }
     } catch {
       console.error("Yep, it happened in startWatchingPosition");
       await GPSwarning();
-      setGPSenabled(false);
-      await restartWatchingPosition();
+      GPSenabledRef.current = false;
     }
   }
 
   type watchError = {
     error: string;
   };
-  async function restartWatchingPosition() {
-    if (restartPromiseRef.current) return;
-    
-    restartPromiseRef.current = new Promise((resolve) => setTimeout(resolve, 5000))
-    .then(() => {
-      restartPromiseRef.current = null;
-      if (watchRef.current !== null) {
-        Geolocation.clearWatch({ id: watchRef.current });
-        watchRef.current = null;
-      }
-      return startWatchingPosition();
-    });
-  }
 
   function WatchCallback(position: Position | null, err: watchError | null) {
     // If error is present
-    if (err) {
-      // If errors is because of denied access to GPS
-        setReadedTimes((prev) => prev + 1);
-        console.error("warning happened in WatchCallback", watchRef.current);
-        setGPSenabled(false);
-        (async() => await restartWatchingPosition())();
-    } else {
-      setGPSenabled(true);
-    }
     setLoadedTimes((prev) => prev + 1);
+    if (position) {
+      setCoordinates(position);
+    }
 
     console.log("Position = ", position, "Error = ", err);
+  }
+
+  
+  async function checkIfGPSEnabled() {
+    try {
+      await Geolocation.checkPermissions();
+      GPSenabledRef.current = true;
+    } catch {
+      console.error("No GPS available");
+      GPSenabledRef.current = false;
+    }
   }
 
   // Will make native alert
@@ -121,8 +120,7 @@ export default function NativeContextProvider({
   }
 
   return (
-    <NativeContext.Provider value={{ GPSenabled, loadedTimes }}>
-      <p>readed times: {readedTimes}</p>
+    <NativeContext.Provider value={{ GPSenabled: GPSenabledRef.current, loadedTimes, coordinates }}>
       <p>watch runned: {watchRunned}</p>
       <p>current watch: {watchRef.current}</p>
       {children}
